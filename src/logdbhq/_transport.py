@@ -31,9 +31,25 @@ from .errors import (
     LogDBNetworkError,
     LogDBTimeoutError,
 )
+from .models import LogLevel
 
 
 JSON_CONTENT_TYPE = "application/json"
+
+
+# Map LogLevel → the server's REST wire-format string. Must match the
+# server's `LogLevel` enum names exactly. Trace has no server-side
+# equivalent, so we emit Debug — keeping client-side Trace semantics
+# without breaking the round-trip.
+_LEVEL_WIRE: Dict[LogLevel, str] = {
+    LogLevel.Trace: "Debug",
+    LogLevel.Debug: "Debug",
+    LogLevel.Info: "Info",
+    LogLevel.Warning: "Warning",
+    LogLevel.Error: "Error",
+    LogLevel.Critical: "Critical",
+    LogLevel.Exception: "Exception",
+}
 
 
 def _json_default(obj: Any) -> Any:
@@ -49,7 +65,17 @@ def _json_default(obj: Any) -> Any:
 
 def _strip_none(value: Any) -> Any:
     """Recursively drop ``None`` values so the server sees a minimal
-    payload. Cheap enough to do on every request."""
+    payload. Unwraps dataclass instances so list-of-dataclass payloads
+    (batch sends) get the same null-stripping as single-dataclass ones.
+    Also maps :class:`LogLevel` to its wire-format string name — the
+    server's REST enum is ``Info=0, Warning=1, Error=2, Critical=3,
+    Exception=4, Debug=5``, which disagrees with the SDK's int values,
+    so we emit the string form to survive re-orderings on either side.
+    Cheap enough to do on every request."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return _strip_none(asdict(value))
+    if isinstance(value, LogLevel):
+        return _LEVEL_WIRE[value]
     if isinstance(value, dict):
         return {k: _strip_none(v) for k, v in value.items() if v is not None}
     if isinstance(value, list):
@@ -59,8 +85,6 @@ def _strip_none(value: Any) -> Any:
 
 def serialize_body(payload: Any) -> str:
     """Turn dataclasses / dicts / lists into a JSON body string."""
-    if is_dataclass(payload) and not isinstance(payload, type):
-        payload = asdict(payload)
     payload = _strip_none(payload)
     return json.dumps(payload, default=_json_default, separators=(",", ":"))
 

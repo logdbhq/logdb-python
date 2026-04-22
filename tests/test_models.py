@@ -30,7 +30,7 @@ def test_log_with_level_and_attributes():
     )
     payload = json.loads(serialize_body(log))
     assert payload["message"] == "payment"
-    assert payload["level"] == 2  # enum serializes to int value
+    assert payload["level"] == "Info"  # wire-format string name, not int
     assert payload["userEmail"] == "alice@example.com"
     assert payload["attributesS"] == {"currency": "EUR"}
     assert payload["attributesN"] == {"amount_eur": 199.99}
@@ -84,3 +84,48 @@ def test_batch_list_serializes_as_array():
     payload = json.loads(serialize_body(logs))
     assert isinstance(payload, list)
     assert [x["message"] for x in payload] == ["a", "b"]
+
+
+def test_batch_strips_none_inside_list_items():
+    # Regression: batch payloads must strip None fields the same way
+    # single-dataclass payloads do, so the server never sees
+    # "timestamp":null (which it rejects as invalid DateTime).
+    logs = [Log(message="a"), Log(message="b")]
+    payload = json.loads(serialize_body(logs))
+    for item in payload:
+        assert "timestamp" not in item
+        assert "application" not in item
+        assert None not in item.values()
+
+
+def test_level_serializes_as_wire_name_not_int():
+    # Regression: the server's REST LogLevel enum is
+    # Info=0, Warning=1, Error=2, Critical=3, Exception=4, Debug=5 —
+    # NOT the SDK's int values. Sending the int would store every log
+    # under the wrong level. Wire format must be the string name.
+    from logdbhq.models import LogLevel
+
+    cases = {
+        LogLevel.Debug: "Debug",
+        LogLevel.Info: "Info",
+        LogLevel.Warning: "Warning",
+        LogLevel.Error: "Error",
+        LogLevel.Critical: "Critical",
+        LogLevel.Exception: "Exception",
+    }
+    for level, wire in cases.items():
+        body = json.loads(serialize_body(Log(message="t", level=level)))
+        assert body["level"] == wire, f"{level} should serialize as {wire!r}"
+
+    # Trace has no server-side equivalent; SDK maps it to Debug.
+    body = json.loads(serialize_body(Log(message="t", level=LogLevel.Trace)))
+    assert body["level"] == "Debug"
+
+
+def test_level_in_batch_also_serializes_as_wire_name():
+    from logdbhq.models import LogLevel
+
+    batch = [Log(message="a", level=LogLevel.Info), Log(message="b", level=LogLevel.Error)]
+    payload = json.loads(serialize_body(batch))
+    assert payload[0]["level"] == "Info"
+    assert payload[1]["level"] == "Error"

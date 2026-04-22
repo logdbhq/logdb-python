@@ -41,7 +41,7 @@ def test_direct_send_hits_single_endpoint(httpx_mock):
     request = httpx_mock.get_request()
     body = json.loads(request.content)
     assert body["message"] == "hi"
-    assert body["level"] == 2
+    assert body["level"] == "Info"
     assert body["application"] == "test-app"  # default stamped
     assert body["environment"] == "production"  # default stamped
     assert request.headers["X-LogDB-ApiKey"] == "sk-test"

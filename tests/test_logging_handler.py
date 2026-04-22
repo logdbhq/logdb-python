@@ -32,7 +32,7 @@ def test_handler_forwards_info_record(httpx_mock):
     request = httpx_mock.get_request()
     body = json.loads(request.content)
     assert body["message"] == "ready"
-    assert body["level"] == 2  # Info
+    assert body["level"] == "Info"
     assert body["source"] == "test_handler_info"
     # extras routed to typed attrs
     assert body["attributesN"] == {"worker_id": 7.0}

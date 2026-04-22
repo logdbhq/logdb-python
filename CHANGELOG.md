@@ -5,6 +5,37 @@ All notable changes to `logdbhq` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0-alpha.2] - 2026-04-22
+
+### Fixed
+
+- **Logs now land under the correct severity.** The REST API's `LogLevel`
+  enum is `Info=0, Warning=1, Error=2, Critical=3, Exception=4, Debug=5` —
+  the SDK's `IntEnum` values (`Info=2, Warning=3, Error=4, …`) disagree,
+  so sending the raw int meant every log ended up two levels off on the
+  server (`Info` stored as `Error`, `Warning` as `Critical`, and so on).
+  The transport now emits the wire-format string name (`"Info"`,
+  `"Error"`, …) which is stable across either side re-ordering its
+  numeric enum. Round-trips via `LogDBReader` now return the level
+  that was written.
+- `LogLevel.Trace` has no server-side equivalent; the SDK maps it to
+  `"Debug"` on the wire so client-side Trace semantics round-trip as
+  Debug instead of failing validation (the server returns HTTP 400 on
+  `"level":"Trace"`).
+
+## [0.1.0-alpha.1] - 2026-04-21
+
+### Fixed
+
+- **Batch sends no longer ship `null` fields.** `serialize_body` now
+  unwraps dataclass instances inside lists before stripping `None`, so
+  batch payloads get the same null-stripping as single writes. Previously
+  `send_log_batch` / `send_log_beat_batch` / `send_log_cache_batch`
+  serialized every optional field as `"field":null`, and the server
+  rejected the request with HTTP 400 "The JSON value could not be
+  converted to System.DateTime" on `"timestamp":null`. Single-log writes
+  were unaffected because they went through `asdict()` first.
+
 ## [0.1.0-alpha.0] - 2026-04-20
 
 Initial public release.
